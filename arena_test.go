@@ -1,8 +1,8 @@
 package garena
 
 import (
-	"testing"
 	"bytes"
+	"testing"
 )
 
 func Test_ArenaAlloc(t *testing.T) {
@@ -10,9 +10,10 @@ func Test_ArenaAlloc(t *testing.T) {
 	var (
 		a Arena
 		b *byte
+		u *int64
 	)
 
-	ArenaInit(&a, n+1)
+	a = ArenaInit(1 << 20)
 	defer ArenaFreeAll(&a)
 
 	for range n {
@@ -22,8 +23,13 @@ func Test_ArenaAlloc(t *testing.T) {
 
 	assert(*b == 0xCC)
 	assert(a.len == n)
-	assert(a.cap == n+1)
-	assert(bytes.Equal(a.mem, []byte{0xCC, 0xCC, 0xCC, 0x00}))
+	assert(a.cap == 1<<20)
+	assert(bytes.Equal(a.mem[:4], []byte{0xCC, 0xCC, 0xCC, 0x00}))
+
+	u = ArenaAlloc[int64](&a)
+	// 3 + pad 5 + 8 == 16
+	*u = ^0
+	assert(a.len == 16)
 }
 
 func Test_ArenaAllocSlice(t *testing.T) {
@@ -32,17 +38,36 @@ func Test_ArenaAllocSlice(t *testing.T) {
 		p []byte
 	)
 
-	ArenaInit(&a, 10 << 20)
+	a = ArenaInit(10 << 20)
 	defer ArenaFreeAll(&a)
 
 	p = ArenaAllocSlice[byte](&a, 1, 2)
 
 	p[0] = 0xCC
-	p = append(p, 0xDD);
+	p = append(p, 0xDD)
 
 	assert(len(p) == 2)
 	assert(cap(p) == 2)
 	assert(bytes.Equal(p, []byte{0xCC, 0xDD}))
+}
+
+func Test_ptrAlign(t *testing.T) {
+	tests := []struct {
+		ptr      uintptr
+		align    uintptr
+		expected uintptr
+	}{
+		{1, 8, 8},
+		{8, 8, 8},
+		{1, 2, 2},
+		{3, 16, 16},
+	}
+
+	for _, v := range tests {
+		t.Run("", func(t *testing.T) {
+			assert(v.expected == ptrAlign(v.ptr, v.align))
+		})
+	}
 }
 
 func BenchmarkArena(b *testing.B) {
@@ -53,8 +78,8 @@ func BenchmarkArena(b *testing.B) {
 	)
 
 	_ = s
-	
-	ArenaInit(&a, size)
+
+	a = ArenaInit(size)
 
 	for b.Loop() {
 		s = ArenaAllocSlice[byte](&a, size, size)
