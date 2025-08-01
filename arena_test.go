@@ -5,19 +5,19 @@ import (
 	"testing"
 )
 
-func Test_ArenaAlloc(t *testing.T) {
+func Test_Alloc(t *testing.T) {
 	const n = 3
 	var (
-		a Arena
+		a *Arena
 		b *byte
 		u *int64
 	)
 
-	a = ArenaInit(1 << 20)
-	defer ArenaFreeAll(&a)
+	a = New(1 << 20)
+	defer FreeAll(a)
 
 	for range n {
-		b = ArenaAlloc[byte](&a)
+		b = Alloc[byte](a)
 		*b = 0xCC
 	}
 
@@ -26,22 +26,22 @@ func Test_ArenaAlloc(t *testing.T) {
 	assert(a.cap == 1<<20)
 	assert(bytes.Equal(a.mem[:4], []byte{0xCC, 0xCC, 0xCC, 0x00}))
 
-	u = ArenaAlloc[int64](&a)
+	u = Alloc[int64](a)
 	// 3 + pad 5 + 8 == 16
 	*u = ^0
 	assert(a.len == 16)
 }
 
-func Test_ArenaAllocSlice(t *testing.T) {
+func Test_AllocSlice(t *testing.T) {
 	var (
-		a Arena
+		a *Arena
 		p []byte
 	)
 
-	a = ArenaInit(10 << 20)
-	defer ArenaFreeAll(&a)
+	a = New(10 << 20)
+	defer FreeAll(a)
 
-	p = ArenaAllocSlice[byte](&a, 1, 2)
+	p = AllocSlice[byte](a, 1, 2)
 
 	p[0] = 0xCC
 	p = append(p, 0xDD)
@@ -73,17 +73,17 @@ func Test_ptrAlign(t *testing.T) {
 func BenchmarkArena(b *testing.B) {
 	const size = 5 << 20
 	var (
-		a Arena
+		a *Arena
 		s []byte
 	)
 
 	_ = s
 
-	a = ArenaInit(size)
+	a = New(size)
 
 	for b.Loop() {
-		s = ArenaAllocSlice[byte](&a, size, size)
-		ArenaFreeAll(&a)
+		s = AllocSlice[byte](a, size, size)
+		FreeAll(a)
 	}
 }
 

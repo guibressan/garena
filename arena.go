@@ -17,23 +17,23 @@ type internalSlice struct {
 	cap uintptr
 }
 
-func ArenaInit(size uintptr) Arena {
+func New(size uintptr) *Arena {
 	var a Arena
 
 	a.mem = make([]byte, size)
 	a.cap = size
 	a.base = uintptr(unsafe.Pointer(&a.mem[0]))
 
-	return a
+	return &a
 }
 
-func ArenaAlloc[T any](a *Arena) (val *T) {
+func Alloc[T any](a *Arena) (val *T) {
 	return (*T)(unsafe.Pointer(
-		arenaAlloc(a, unsafe.Sizeof(*val), unsafe.Alignof(*val))),
+		alloc(a, unsafe.Sizeof(*val), unsafe.Alignof(*val))),
 	)
 }
 
-func ArenaAllocSlice[T any](a *Arena, len, cap uintptr) []T {
+func AllocSlice[T any](a *Arena, len, cap uintptr) []T {
 	var (
 		tdest T
 		sdest internalSlice
@@ -41,14 +41,14 @@ func ArenaAllocSlice[T any](a *Arena, len, cap uintptr) []T {
 
 	sdest.len = len
 	sdest.cap = cap
-	sdest.ptr = arenaAlloc(
+	sdest.ptr = alloc(
 		a, unsafe.Sizeof(tdest)*cap, unsafe.Alignof(tdest),
 	)
 
 	return *((*[]T)(unsafe.Pointer(&sdest)))
 }
 
-func ArenaFreeAll(a *Arena) {
+func FreeAll(a *Arena) {
 	clear(a.mem)
 	a.len = 0
 }
@@ -57,7 +57,7 @@ func ptrAlign(ptr, align uintptr) uintptr {
 	return (ptr + align - 1) & ^(align - 1)
 }
 
-func arenaAlloc(a *Arena, size, align uintptr) uintptr {
+func alloc(a *Arena, size, align uintptr) uintptr {
 	var (
 		ptr           uintptr
 		effectiveSize uintptr
