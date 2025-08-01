@@ -2,7 +2,9 @@ package garena
 
 import (
 	"bytes"
+	"runtime"
 	"testing"
+	"unsafe"
 )
 
 func Test_Alloc(t *testing.T) {
@@ -14,7 +16,7 @@ func Test_Alloc(t *testing.T) {
 	)
 
 	a = New(1 << 20)
-	defer FreeAll(a)
+	defer a.Destroy()
 
 	for range n {
 		b = Alloc[byte](a)
@@ -39,7 +41,7 @@ func Test_AllocSlice(t *testing.T) {
 	)
 
 	a = New(10 << 20)
-	defer FreeAll(a)
+	defer a.Destroy()
 
 	p = AllocSlice[byte](a, 1, 2)
 
@@ -70,7 +72,7 @@ func Test_ptrAlign(t *testing.T) {
 	}
 }
 
-func BenchmarkArena(b *testing.B) {
+func BenchmarkArenaAlloc(b *testing.B) {
 	const size = 5 << 20
 	var (
 		a *Arena
@@ -80,14 +82,15 @@ func BenchmarkArena(b *testing.B) {
 	_ = s
 
 	a = New(size)
+	defer a.Destroy()
 
 	for b.Loop() {
 		s = AllocSlice[byte](a, size, size)
-		FreeAll(a)
+		a.FreeAll()
 	}
 }
 
-func BenchmarkGC(b *testing.B) {
+func BenchmarkGCAlloc(b *testing.B) {
 	const size = 5 << 20
 	var s []byte
 
@@ -95,6 +98,62 @@ func BenchmarkGC(b *testing.B) {
 
 	for b.Loop() {
 		s = make([]byte, size, size)
+	}
+}
+
+func BenchmarkArenaStress(b *testing.B) {
+	const (
+		npad   = 32
+		nnodes = 26843545
+	)
+
+	type node struct {
+		parent *node
+		pad    [npad]byte
+	}
+
+	var (
+		a *Arena
+	)
+
+	a = New(unsafe.Sizeof(node{}) * nnodes)
+	defer a.Destroy()
+
+	for b.Loop() {
+		var (
+			tail *node
+			swap *node
+		)
+		for range nnodes {
+			swap = Alloc[node](a)
+			*swap = node{parent: tail}
+			tail = swap
+		}
+		tail = nil
+		a.FreeAll()
+	}
+}
+
+func BenchmarkGCStress(b *testing.B) {
+	const (
+		npad   = 32
+		nnodes = 26843545
+	)
+
+	type node struct {
+		parent *node
+		pad    [npad]byte
+	}
+
+	for b.Loop() {
+		var (
+			tail *node
+		)
+		for range nnodes {
+			tail = &node{parent: tail}
+		}
+		tail = nil
+		runtime.GC()
 	}
 }
 

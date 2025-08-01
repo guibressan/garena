@@ -1,6 +1,7 @@
 package garena
 
 import (
+	"syscall"
 	"unsafe"
 )
 
@@ -17,28 +18,64 @@ type internalSlice struct {
 	cap uintptr
 }
 
+// New allocates at least size bytes from the system and initializes the Arena.
+//
+// Call Destroy to release the memory pages to the OS.
 func New(size uintptr) *Arena {
-	var a Arena
+	var (
+		a   Arena
+		cap uintptr
+		err error
+	)
 
-	a.mem = make([]byte, size)
-	a.cap = size
+	cap = uintptr(syscall.Getpagesize())
+	cap = ptrAlign(size, cap)
+	a.mem, err = syscall.Mmap(
+		-1,
+		0,
+		int(cap),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_ANON|syscall.MAP_PRIVATE,
+	)
+	if err != nil {
+		panic(err)
+	}
+	a.cap = cap
 	a.base = uintptr(unsafe.Pointer(&a.mem[0]))
 
 	return &a
 }
 
+// Destroy releases the resources to the OS, we assume there are no live pointers
+// allocated, otherwise the behavior is undefined
+func (a *Arena) Destroy() {
+	clear(a.mem)
+	syscall.Munmap(a.mem)
+	*a = Arena{}
+}
+
+// FreeAll clears the arena for reuse
+func (a *Arena) FreeAll() {
+	clear(a.mem)
+	a.len = 0
+}
+
+// Alloc reserves data to store sizeof(T) and returns the aligned pointer
 func Alloc[T any](a *Arena) (val *T) {
 	return (*T)(unsafe.Pointer(
 		alloc(a, unsafe.Sizeof(*val), unsafe.Alignof(*val))),
 	)
 }
 
+// AllocSlice reserves data to store sizeof(T * max(len, cap)) and returns the
+// aligned pointer
 func AllocSlice[T any](a *Arena, len, cap uintptr) []T {
 	var (
 		tdest T
 		sdest internalSlice
 	)
 
+	cap = max(len, cap)
 	sdest.len = len
 	sdest.cap = cap
 	sdest.ptr = alloc(
@@ -46,11 +83,6 @@ func AllocSlice[T any](a *Arena, len, cap uintptr) []T {
 	)
 
 	return *((*[]T)(unsafe.Pointer(&sdest)))
-}
-
-func FreeAll(a *Arena) {
-	clear(a.mem)
-	a.len = 0
 }
 
 func ptrAlign(ptr, align uintptr) uintptr {
